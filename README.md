@@ -23,6 +23,7 @@ Serveur MCP (Model Context Protocol) pour interroger l'**API SIRENE** de l'INSEE
 5. **advanced_search** - Recherche avancée avec filtres multiples
    - Code postal
    - Code NAF/APE
+   - Section d'activité (A-U)
    - Nombre d'employés (min/max)
    - Pagination disponible
 
@@ -201,6 +202,45 @@ Une fois le serveur configuré, vous pouvez l'utiliser dans Claude Desktop :
    ```
    Trouve les entreprises de programmation informatique à Paris avec plus de 50 employés
    ```
+
+6. **Recherche par section d'activité**
+   ```
+   Liste les entreprises dans la section "Construction" à Marseille
+   ```
+
+   ou
+
+   ```
+   Recherche les entreprises dans le secteur de l'information et communication (section J)
+   ```
+
+## Sections d'activité NAF
+
+Le serveur supporte la recherche par section d'activité (niveau 1 de la nomenclature NAF). Vous pouvez utiliser soit le code (lettre A-U) soit le libellé de la section.
+
+| Code | Libellé |
+|------|---------|
+| A | Agriculture, sylviculture et pêche |
+| B | Industries extractives |
+| C | Industrie manufacturière |
+| D | Production et distribution d'électricité, de gaz, de vapeur et d'air conditionné |
+| E | Production et distribution d'eau ; assainissement, gestion des déchets et dépollution |
+| F | Construction |
+| G | Commerce ; réparation d'automobiles et de motocycles |
+| H | Transports et entreposage |
+| I | Hébergement et restauration |
+| J | Information et communication |
+| K | Activités financières et d'assurance |
+| L | Activités immobilières |
+| M | Activités spécialisées, scientifiques et techniques |
+| N | Activités de services administratifs et de soutien |
+| O | Administration publique |
+| P | Enseignement |
+| Q | Santé humaine et action sociale |
+| R | Arts, spectacles et activités récréatives |
+| S | Autres activités de services |
+| T | Activités des ménages en tant qu'employeurs |
+| U | Activités extra-territoriales |
 
 ## Informations retournées
 

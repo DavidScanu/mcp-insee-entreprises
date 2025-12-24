@@ -19,6 +19,8 @@ import httpx
 from mcp.server import Server
 from mcp.types import Tool, TextContent
 
+from .section_mapping import get_section_code, list_all_sections
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("insee-entreprises")
 
@@ -65,7 +67,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="search_by_name",
-            description="Search enterprises by company name, address, or director name. Supports partial matches and phonetic search.",
+            description="Search enterprises by specific company name, address, or director name. Use this ONLY when searching for a specific enterprise by its name or director. DO NOT use for sector/industry searches - use advanced_search with section_activite_principale instead.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -119,7 +121,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="advanced_search",
-            description="Advanced search with multiple filters: postal code, employee count, NAF code, etc.",
+            description="Advanced search with multiple filters including activity sector/section. Use this for: searching by industry/sector (Construction, Agriculture, etc.), filtering by location (postal code), employee count, or combining multiple criteria. Supports French activity section names (e.g., 'Construction', 'Information et communication') or codes (A-U).",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -134,6 +136,10 @@ async def list_tools() -> list[Tool]:
                     "naf_code": {
                         "type": "string",
                         "description": "Filter by NAF/APE activity code"
+                    },
+                    "section_activite_principale": {
+                        "type": "string",
+                        "description": "Filter by activity section (A-U) or section name (e.g., 'Agriculture', 'Construction', 'Information et communication')"
                     },
                     "min_employees": {
                         "type": "integer",
@@ -254,32 +260,53 @@ async def search_by_activity(naf_code: str, page: int = 1, per_page: int = 10) -
 async def advanced_search(params: dict[str, Any]) -> list[TextContent]:
     """Perform advanced search with multiple filters."""
     query_parts = []
-    
+
     if params.get("query"):
         query_parts.append(f"q={quote(params['query'])}")
     if params.get("postal_code"):
         query_parts.append(f"code_postal={params['postal_code']}")
     if params.get("naf_code"):
         query_parts.append(f"activite_principale={quote(params['naf_code'])}")
+
+    # Handle section_activite_principale - convert label to code if needed
+    if params.get("section_activite_principale"):
+        section_input = params["section_activite_principale"].strip()
+
+        # Check if it's already a valid section code (single letter A-U)
+        if len(section_input) == 1 and section_input.upper() in "ABCDEFGHIJKLMNOPQRSTU":
+            section_code = section_input.upper()
+        else:
+            # Try to convert section label to code
+            section_code = get_section_code(section_input)
+            if not section_code:
+                available_sections = list_all_sections()
+                sections_list = "\n".join([f"  - {code}: {label}" for code, label in available_sections.items()])
+                return [TextContent(
+                    type="text",
+                    text=f"Invalid section: '{section_input}'\n\nAvailable sections:\n{sections_list}"
+                )]
+
+        query_parts.append(f"section_activite_principale={section_code}")
+
     if params.get("min_employees"):
         query_parts.append(f"tranche_effectif_salarie_min={params['min_employees']}")
     if params.get("max_employees"):
         query_parts.append(f"tranche_effectif_salarie_max={params['max_employees']}")
-    
+
     page = params.get("page", 1)
     per_page = params.get("per_page", 10)
     query_parts.append(f"page={page}")
     query_parts.append(f"per_page={per_page}")
-    
+
     async with httpx.AsyncClient(timeout=30.0) as client:
         url = f"{RECHERCHE_API_BASE}/search?{'&'.join(query_parts)}"
         response = await client.get(url)
         response.raise_for_status()
         data = response.json()
-        
+
         if not data.get("results"):
             return [TextContent(type="text", text="No results found with the specified filters")]
-        
+
         results = format_search_results(data, "advanced search")
         return [TextContent(type="text", text=results)]
 
