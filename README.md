@@ -1,5 +1,11 @@
 # INSEE Entreprises MCP Server
 
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-green.svg)](https://modelcontextprotocol.io)
+[![Claude Code](https://img.shields.io/badge/Claude%20Code-Compatible-8A2BE2.svg)](https://claude.com/claude-code)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![API SIRENE](https://img.shields.io/badge/API-SIRENE%20INSEE-red.svg)](https://www.data.gouv.fr/dataservices/api-recherche-dentreprises)
+
 Serveur MCP (Model Context Protocol) pour interroger l'**API SIRENE** de l'INSEE et rechercher des entreprises françaises.
 
 ## Fonctionnalités
@@ -265,6 +271,7 @@ Ce serveur utilise l'**API Recherche d'Entreprises** maintenue par l'INSEE :
 
 - API Recherche d’Entreprises : https://www.data.gouv.fr/dataservices/api-recherche-dentreprises
 - Documentation API : https://recherche-entreprises.api.gouv.fr/docs/
+- OpenAPI Specification : https://recherche-entreprises.api.gouv.fr/openapi.json
 
 ### Limites
 
@@ -272,6 +279,12 @@ Ce serveur utilise l'**API Recherche d'Entreprises** maintenue par l'INSEE :
   - Prédécesseurs/successeurs d'établissements
   - Entreprises non diffusibles
   - Rejets d'inscriptions RCS
+
+## TODO
+
+- Une seule fonction de recherche avec des paramètres optionnels
+- Filtrage par localisation géographique (région, département)
+- Support pour d'autres API INSEE (ex. API Sirene complète)
 
 ## Développeur
 
