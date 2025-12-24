@@ -13,30 +13,49 @@ Serveur MCP (Model Context Protocol) pour interroger l'**API SIRENE** de l'INSEE
 ### 🔍 Outils disponibles
 
 1. **search_by_siren** - Recherche par numéro SIREN (9 chiffres)
-   - Retourne les informations détaillées sur l'entité juridique
+   - Utilise l'API officielle INSEE Sirene
+   - Retourne les informations complètes et officielles de l'unité légale
+   - Données: dénomination, catégorie juridique, activité (NAF), effectifs, état administratif
 
 2. **search_by_siret** - Recherche par numéro SIRET (14 chiffres)
-   - Retourne les informations détaillées sur l'établissement
+   - Utilise l'API officielle INSEE Sirene
+   - Retourne les informations complètes et officielles de l'établissement
+   - Données: adresse complète, activité (NAF), type d'établissement (siège/secondaire), effectifs, état administratif
 
-3. **search_by_name** - Recherche par nom d'entreprise, adresse ou dirigeant
-   - Supporte la recherche partielle et phonétique
-   - Pagination disponible
-
-4. **search_by_activity** - Recherche par code NAF/APE
-   - Trouve toutes les entreprises avec l'activité spécifiée
-   - Pagination disponible
-
-5. **advanced_search** - Recherche avancée avec filtres multiples
+3. **advanced_search** - Recherche avancée avec filtres multiples
+   - Nom d'entreprise, adresse, dirigeant
    - Code postal
    - Code NAF/APE
-   - Section d'activité (A-U)
+   - Section d'activité (A-U) avec conversion automatique nom → code
    - Nombre d'employés (min/max)
    - Pagination disponible
 
 ## Prérequis
 
+
 - Python 3.12+
 - uv (gestionnaire de paquets Python)
+- Clé API INSEE (gratuite) - [Obtenir une clé](https://portail-api.insee.fr/)
+- jq (pour le formatage JSON dans les scripts bash)
+- yq (pour convertir le schéma OpenAPI YAML en JSON)
+
+#### Installer jq et yq
+
+Pour installer jq :
+```bash
+sudo apt-get install jq
+```
+
+Pour installer yq (version Go, recommandée) :
+```bash
+sudo wget -O /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64"
+sudo chmod +x /usr/local/bin/yq
+```
+Ou via pip (version Python) :
+```bash
+pip install yq
+```
+
 
 ### Installer UV 
 
@@ -85,7 +104,21 @@ cd mcp-insee-entreprises
 uv sync
 ```
 
-3. **Ajouter le serveur MCP à Claude Code** (scope user) :
+3. **Configurer la clé API INSEE** :
+
+Créez un fichier `.env` à la racine du projet:
+```bash
+cp .env.example .env
+```
+
+Éditez le fichier `.env` et ajoutez votre clé API INSEE:
+```
+INSEE_API_KEY=votre_clé_api_ici
+```
+
+> **Note** : Pour obtenir gratuitement une clé API INSEE, rendez-vous sur https://portail-api.insee.fr/
+
+4. **Ajouter le serveur MCP à Claude Code** (scope user) :
 
 ```bash
 claude mcp add --transport stdio insee-entreprises --scope user -- uv --directory <chemin/absolu/vers/mcp-insee-entreprises> run insee-entreprises
@@ -106,7 +139,7 @@ Pour trouver le chemin complet vers `uv`, utilisez :
 which uv
 ```
 
-4. **Vérifier l'installation** :
+5. **Vérifier l'installation** :
 ```bash
 claude mcp list
 ```
@@ -259,32 +292,71 @@ Pour chaque entreprise, le serveur retourne :
 - **Effectifs** : Tranche d'effectif salarié
 - **Dirigeants** : Liste des dirigeants et leur fonction
 
-## API Utilisée
+## API Utilisées
 
-Ce serveur utilise l'**API Recherche d'Entreprises** maintenue par l'INSEE :
-- Base URL : https://recherche-entreprises.api.gouv.fr
-- Limite : 7 requêtes par seconde
-- Disponibilité : 100%
-- Accès : Ouvert (pas d'authentification requise)
+Ce serveur MCP utilise deux API complémentaires de l'INSEE:
 
-### Documentation de l'API
+### 1. API INSEE Sirene (Officielle)
 
-- API Recherche d’Entreprises : https://www.data.gouv.fr/dataservices/api-recherche-dentreprises
-- Documentation API : https://recherche-entreprises.api.gouv.fr/docs/
-- OpenAPI Specification : https://recherche-entreprises.api.gouv.fr/openapi.json
+Utilisée pour les recherches **SIREN** et **SIRET** - Données officielles et complètes:
 
-### Limites
+- **Base URL**: `https://api.insee.fr/api-sirene/3.11`
+- **Authentification**: Clé API requise (gratuite) - configurée via le fichier `.env`
+- **Endpoints**:
+  - `/siren/{siren}` - Informations sur l'unité légale
+  - `/siret/{siret}` - Informations sur l'établissement
+- **Limite**: 30 requêtes/minute (en environnement d'intégration)
 
-- L'API ne peut pas accéder aux :
-  - Prédécesseurs/successeurs d'établissements
-  - Entreprises non diffusibles
-  - Rejets d'inscriptions RCS
+#### Documentation
+- Portail API: https://portail-api.insee.fr/ (pour obtenir une clé API)
+- Documentation complète: https://portail-api.insee.fr/catalog/api/2ba0e549-5587-3ef1-9082-99cd865de66f/doc
+- Spécifications OpenAPI: https://api-apimanager.insee.fr/portal/environments/DEFAULT/apis/2ba0e549-5587-3ef1-9082-99cd865de66f/pages/6548510e-c3e1-3099-be96-6edf02870699/content
+
+### 2. API Recherche d'Entreprises
+
+Utilisée pour la recherche **avancée** avec filtres multiples:
+
+- **Base URL**: `https://recherche-entreprises.api.gouv.fr`
+- **Authentification**: Aucune (accès libre)
+- **Limite**: 7 requêtes par seconde
+- **Disponibilité**: 100%
+
+#### Documentation
+- Documentation: https://www.data.gouv.fr/dataservices/api-recherche-dentreprises
+- Swagger: https://recherche-entreprises.api.gouv.fr/docs/
+- OpenAPI: https://recherche-entreprises.api.gouv.fr/openapi.json
+
+#### Limites
+- Pas d'accès aux prédécesseurs/successeurs d'établissements
+- Pas d'accès aux entreprises non diffusibles
+- Pas d'accès aux rejets d'inscriptions RCS
+
+### Test des APIs
+
+Un script bash `scripts/insee_api.sh` est inclus pour tester les appels aux deux APIs. Assurez-vous d'avoir `jq` et  `yq` installés pour le formatage JSON et la conversion du YAML vers JSON.
+
+```bash
+chmod +x scripts/insee_api.sh
+./scripts/insee_api.sh
+```
+
+**Dépannage** :
+
+- **Clé API INSEE invalide ou absente** : vérifiez le contenu du fichier `.env` et la variable `INSEE_API_KEY`.
+- **Caractères spéciaux mal affichés (Ã©, Ã , etc.)** : assurez-vous que votre terminal et vos fichiers sont en UTF-8.
+- **Erreur : yq n'est pas installé** : installez `yq`.
+- **Erreur : jq n'est pas installé** : installez `jq`.
+
+---
 
 ## TODO
 
-- Une seule fonction de recherche avec des paramètres optionnels
-- Filtrage par localisation géographique (région, département)
-- Support pour d'autres API INSEE (ex. API Sirene complète)
+- Tester le serveur MCP la recherche par SIREN et SIRET (API officielle INSEE Sirene 3.11)
+- Tester le serveur MCP avec la nouvelle version de l'API INSEE Sirene (v4.0)
+- Ajouter des exemples d'utilisation avancée dans la documentation
+- Ajouter la recherche par critères géographiques (région, département)
+
+---
 
 ## Développeur
 

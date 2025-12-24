@@ -3,30 +3,39 @@
 MCP Server for INSEE SIRENE API.
 
 Provides tools to search French enterprises using:
-- SIREN (enterprise identifier)
-- SIRET (establishment identifier)
-- Company name (denomination)
-- Director name (dirigeant)
-- Activity code (NAF/APE)
+- SIREN (enterprise identifier) via official INSEE API
+- SIRET (establishment identifier) via official INSEE API
+- Advanced search with multiple filters via Recherche Entreprises API
 """
 
 import asyncio
 import logging
+import os
+from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
 import httpx
+from dotenv import load_dotenv
 from mcp.server import Server
 from mcp.types import Tool, TextContent
 
 from .section_mapping import get_section_code, list_all_sections
 
+# Load environment variables
+env_path = Path(__file__).parent.parent.parent / ".env"
+load_dotenv(dotenv_path=env_path)
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("insee-entreprises")
 
 # API Configuration
-SIRENE_API_BASE = "https://api.insee.fr/entreprises/sirene/V3.11"
+INSEE_API_BASE = "https://api.insee.fr/api-sirene/3.11"
+INSEE_API_KEY = os.getenv("INSEE_API_KEY")
 RECHERCHE_API_BASE = "https://recherche-entreprises.api.gouv.fr"
+
+if not INSEE_API_KEY:
+    logger.warning("INSEE_API_KEY not found in environment variables. SIREN/SIRET searches will fail.")
 
 app = Server("insee-entreprises")
 
@@ -37,7 +46,7 @@ async def list_tools() -> list[Tool]:
     return [
         Tool(
             name="search_by_siren",
-            description="Search enterprise by SIREN number (9 digits). Returns detailed information about the legal entity.",
+            description="Search enterprise by SIREN number (9 digits) using official INSEE API. Returns detailed and complete information about the legal entity (unité légale).",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -52,7 +61,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="search_by_siret",
-            description="Search establishment by SIRET number (14 digits). Returns detailed information about the specific establishment.",
+            description="Search establishment by SIRET number (14 digits) using official INSEE API. Returns detailed and complete information about the specific establishment (établissement).",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -66,68 +75,14 @@ async def list_tools() -> list[Tool]:
             }
         ),
         Tool(
-            name="search_by_name",
-            description="Search enterprises by specific company name, address, or director name. Use this ONLY when searching for a specific enterprise by its name or director. DO NOT use for sector/industry searches - use advanced_search with section_activite_principale instead.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "Search term (company name, address, director name, etc.)"
-                    },
-                    "page": {
-                        "type": "integer",
-                        "description": "Page number for pagination (default: 1)",
-                        "default": 1,
-                        "minimum": 1
-                    },
-                    "per_page": {
-                        "type": "integer",
-                        "description": "Results per page (default: 10, max: 25)",
-                        "default": 10,
-                        "minimum": 1,
-                        "maximum": 25
-                    }
-                },
-                "required": ["query"]
-            }
-        ),
-        Tool(
-            name="search_by_activity",
-            description="Search enterprises by NAF/APE activity code. Returns all enterprises with the specified activity.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "naf_code": {
-                        "type": "string",
-                        "description": "NAF/APE activity code (e.g., '62.01Z' for computer programming)"
-                    },
-                    "page": {
-                        "type": "integer",
-                        "description": "Page number for pagination (default: 1)",
-                        "default": 1,
-                        "minimum": 1
-                    },
-                    "per_page": {
-                        "type": "integer",
-                        "description": "Results per page (default: 10, max: 25)",
-                        "default": 10,
-                        "minimum": 1,
-                        "maximum": 25
-                    }
-                },
-                "required": ["naf_code"]
-            }
-        ),
-        Tool(
             name="advanced_search",
-            description="Advanced search with multiple filters including activity sector/section. Use this for: searching by industry/sector (Construction, Agriculture, etc.), filtering by location (postal code), employee count, or combining multiple criteria. Supports French activity section names (e.g., 'Construction', 'Information et communication') or codes (A-U).",
+            description="Advanced search with multiple filters including activity sector/section, company name, location, and employee count. Use this for: searching by industry/sector (Construction, Agriculture, etc.), company name, director name, address, filtering by location (postal code), employee count, or combining multiple criteria. Supports French activity section names (e.g., 'Construction', 'Information et communication') or codes (A-U).",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "Main search term (optional)"
+                        "description": "Search term for company name, address, or director name (optional)"
                     },
                     "postal_code": {
                         "type": "string",
@@ -135,7 +90,7 @@ async def list_tools() -> list[Tool]:
                     },
                     "naf_code": {
                         "type": "string",
-                        "description": "Filter by NAF/APE activity code"
+                        "description": "Filter by NAF/APE activity code (e.g., '62.01Z')"
                     },
                     "section_activite_principale": {
                         "type": "string",
@@ -176,18 +131,6 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
             return await search_by_siren(arguments["siren"])
         elif name == "search_by_siret":
             return await search_by_siret(arguments["siret"])
-        elif name == "search_by_name":
-            return await search_by_name(
-                arguments["query"],
-                arguments.get("page", 1),
-                arguments.get("per_page", 10)
-            )
-        elif name == "search_by_activity":
-            return await search_by_activity(
-                arguments["naf_code"],
-                arguments.get("page", 1),
-                arguments.get("per_page", 10)
-            )
         elif name == "advanced_search":
             return await advanced_search(arguments)
         else:
@@ -198,63 +141,51 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
 
 
 async def search_by_siren(siren: str) -> list[TextContent]:
-    """Search enterprise by SIREN using Recherche Entreprises API."""
+    """Search enterprise by SIREN using official INSEE API."""
+    if not INSEE_API_KEY:
+        return [TextContent(type="text", text="ERROR: INSEE_API_KEY not configured. Please add it to your .env file.")]
+
     async with httpx.AsyncClient(timeout=30.0) as client:
-        url = f"{RECHERCHE_API_BASE}/search?q={siren}"
-        response = await client.get(url)
+        url = f"{INSEE_API_BASE}/siren/{siren}"
+        headers = {"X-INSEE-Api-Key-Integration": INSEE_API_KEY}
+
+        response = await client.get(url, headers=headers)
+
+        if response.status_code == 404:
+            return [TextContent(type="text", text=f"No enterprise found with SIREN: {siren}")]
+
         response.raise_for_status()
         data = response.json()
-        
-        if not data.get("results"):
+
+        if "uniteLegale" not in data:
             return [TextContent(type="text", text=f"No enterprise found with SIREN: {siren}")]
-        
-        result = format_enterprise_result(data["results"][0])
+
+        result = format_insee_unite_legale(data["uniteLegale"])
         return [TextContent(type="text", text=result)]
 
 
 async def search_by_siret(siret: str) -> list[TextContent]:
-    """Search establishment by SIRET using Recherche Entreprises API."""
+    """Search establishment by SIRET using official INSEE API."""
+    if not INSEE_API_KEY:
+        return [TextContent(type="text", text="ERROR: INSEE_API_KEY not configured. Please add it to your .env file.")]
+
     async with httpx.AsyncClient(timeout=30.0) as client:
-        url = f"{RECHERCHE_API_BASE}/search?q={siret}"
-        response = await client.get(url)
-        response.raise_for_status()
-        data = response.json()
-        
-        if not data.get("results"):
+        url = f"{INSEE_API_BASE}/siret/{siret}"
+        headers = {"X-INSEE-Api-Key-Integration": INSEE_API_KEY}
+
+        response = await client.get(url, headers=headers)
+
+        if response.status_code == 404:
             return [TextContent(type="text", text=f"No establishment found with SIRET: {siret}")]
-        
-        result = format_enterprise_result(data["results"][0])
+
+        response.raise_for_status()
+        data = response.json()
+
+        if "etablissement" not in data:
+            return [TextContent(type="text", text=f"No establishment found with SIRET: {siret}")]
+
+        result = format_insee_etablissement(data["etablissement"])
         return [TextContent(type="text", text=result)]
-
-
-async def search_by_name(query: str, page: int = 1, per_page: int = 10) -> list[TextContent]:
-    """Search enterprises by name, address, or director."""
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        url = f"{RECHERCHE_API_BASE}/search?q={quote(query)}&page={page}&per_page={per_page}"
-        response = await client.get(url)
-        response.raise_for_status()
-        data = response.json()
-        
-        if not data.get("results"):
-            return [TextContent(type="text", text=f"No results found for: {query}")]
-        
-        results = format_search_results(data, query)
-        return [TextContent(type="text", text=results)]
-
-
-async def search_by_activity(naf_code: str, page: int = 1, per_page: int = 10) -> list[TextContent]:
-    """Search enterprises by NAF/APE activity code."""
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        url = f"{RECHERCHE_API_BASE}/search?activite_principale={quote(naf_code)}&page={page}&per_page={per_page}"
-        response = await client.get(url)
-        response.raise_for_status()
-        data = response.json()
-        
-        if not data.get("results"):
-            return [TextContent(type="text", text=f"No enterprises found with NAF code: {naf_code}")]
-        
-        results = format_search_results(data, f"NAF code {naf_code}")
-        return [TextContent(type="text", text=results)]
 
 
 async def advanced_search(params: dict[str, Any]) -> list[TextContent]:
@@ -309,6 +240,115 @@ async def advanced_search(params: dict[str, Any]) -> list[TextContent]:
 
         results = format_search_results(data, "advanced search")
         return [TextContent(type="text", text=results)]
+
+
+def format_insee_unite_legale(unite_legale: dict[str, Any]) -> str:
+    """Format INSEE API unité légale (enterprise) result."""
+    lines = ["=" * 80]
+    lines.append("UNITÉ LÉGALE (Enterprise)")
+    lines.append("=" * 80)
+
+    # Identifiers
+    if unite_legale.get("siren"):
+        lines.append(f"SIREN: {unite_legale['siren']}")
+
+    # Company name
+    periodesUniteLegale = unite_legale.get("periodesUniteLegale", [])
+    if periodesUniteLegale:
+        periode = periodesUniteLegale[0]
+        if periode.get("denominationUniteLegale"):
+            lines.append(f"Dénomination: {periode['denominationUniteLegale']}")
+        elif periode.get("denominationUsuelle1UniteLegale"):
+            lines.append(f"Dénomination usuelle: {periode['denominationUsuelle1UniteLegale']}")
+
+        # Legal category
+        if periode.get("categorieJuridiqueUniteLegale"):
+            lines.append(f"Catégorie juridique: {periode['categorieJuridiqueUniteLegale']}")
+
+        # Activity
+        if periode.get("activitePrincipaleUniteLegale"):
+            lines.append(f"Activité principale (NAF): {periode['activitePrincipaleUniteLegale']}")
+
+        # Employee range
+        if periode.get("trancheEffectifsUniteLegale"):
+            lines.append(f"Tranche d'effectifs: {periode['trancheEffectifsUniteLegale']}")
+
+        # Status
+        if periode.get("etatAdministratifUniteLegale"):
+            status = "Actif" if periode["etatAdministratifUniteLegale"] == "A" else "Inactif"
+            lines.append(f"État administratif: {status}")
+
+        # Dates
+        if periode.get("dateDebut"):
+            lines.append(f"Date de début: {periode['dateDebut']}")
+
+    lines.append("=" * 80)
+    return "\n".join(lines)
+
+
+def format_insee_etablissement(etablissement: dict[str, Any]) -> str:
+    """Format INSEE API établissement (establishment) result."""
+    lines = ["=" * 80]
+    lines.append("ÉTABLISSEMENT (Establishment)")
+    lines.append("=" * 80)
+
+    # Identifiers
+    if etablissement.get("siret"):
+        lines.append(f"SIRET: {etablissement['siret']}")
+    if etablissement.get("siren"):
+        lines.append(f"SIREN: {etablissement['siren']}")
+
+    # Periods
+    periodesEtablissement = etablissement.get("periodesEtablissement", [])
+    if periodesEtablissement:
+        periode = periodesEtablissement[0]
+
+        # Address
+        adresse = periode.get("adresseEtablissement", {})
+        if adresse:
+            address_parts = []
+            if adresse.get("numeroVoieEtablissement"):
+                address_parts.append(adresse["numeroVoieEtablissement"])
+            if adresse.get("typeVoieEtablissement"):
+                address_parts.append(adresse["typeVoieEtablissement"])
+            if adresse.get("libelleVoieEtablissement"):
+                address_parts.append(adresse["libelleVoieEtablissement"])
+            if address_parts:
+                lines.append(f"Adresse: {' '.join(address_parts)}")
+            if adresse.get("codePostalEtablissement"):
+                lines.append(f"Code postal: {adresse['codePostalEtablissement']}")
+            if adresse.get("libelleCommuneEtablissement"):
+                lines.append(f"Commune: {adresse['libelleCommuneEtablissement']}")
+
+        # Activity
+        if periode.get("activitePrincipaleEtablissement"):
+            lines.append(f"Activité principale (NAF): {periode['activitePrincipaleEtablissement']}")
+
+        # Status
+        if periode.get("etatAdministratifEtablissement"):
+            status = "Actif" if periode["etatAdministratifEtablissement"] == "A" else "Fermé"
+            lines.append(f"État administratif: {status}")
+
+        # Establishment type
+        if periode.get("etablissementSiege"):
+            siege = "Oui" if periode["etablissementSiege"] else "Non"
+            lines.append(f"Établissement siège: {siege}")
+
+        # Employee range
+        if periode.get("trancheEffectifsEtablissement"):
+            lines.append(f"Tranche d'effectifs: {periode['trancheEffectifsEtablissement']}")
+
+    # Unit legale info
+    uniteLegale = etablissement.get("uniteLegale", {})
+    if uniteLegale:
+        periodesUniteLegale = uniteLegale.get("periodesUniteLegale", [])
+        if periodesUniteLegale:
+            periodeUL = periodesUniteLegale[0]
+            if periodeUL.get("denominationUniteLegale"):
+                lines.append(f"\nDénomination de l'unité légale: {periodeUL['denominationUniteLegale']}")
+
+    lines.append("=" * 80)
+    return "\n".join(lines)
 
 
 def format_enterprise_result(enterprise: dict[str, Any]) -> str:
