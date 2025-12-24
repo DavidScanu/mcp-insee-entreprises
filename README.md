@@ -1,10 +1,8 @@
 # INSEE Entreprises MCP Server
 
-Serveur MCP (Model Context Protocol) pour interroger l'API SIRENE de l'INSEE et rechercher des entreprises françaises.
+Serveur MCP (Model Context Protocol) pour interroger l'**API SIRENE** de l'INSEE et rechercher des entreprises françaises.
 
 ## Fonctionnalités
-
-Ce serveur MCP fournit plusieurs outils pour rechercher des entreprises :
 
 ### 🔍 Outils disponibles
 
@@ -28,25 +26,87 @@ Ce serveur MCP fournit plusieurs outils pour rechercher des entreprises :
    - Nombre d'employés (min/max)
    - Pagination disponible
 
-## Installation
-
-### Prérequis
+## Prérequis
 
 - Python 3.12+
 - uv (gestionnaire de paquets Python)
 
-### Installation avec uv
+### Installer UV 
+
+Pour installer `uv`, exécutez la commande suivante :
 
 ```bash
-cd /home/user/mcp-servers/insee-entreprises
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Pour plus d'informations, consultez la documentation officielle : https://astral.sh/uv/docs/getting-started/installation
+
+Pour vérifier l'installation, exécutez :
+
+```bash
+uv --version
+```  
+
+Pour connaitre le chemin d'installation de `uv`, exécutez :
+
+```bash
+which uv
+```
+
+Pour ajouter `uv` à votre variable d'environnement PATH, ajoutez la ligne suivante à votre fichier de configuration de shell (`~/.bashrc`, `~/.zshrc`, etc.) :
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Après avoir modifié ce fichier, rechargez la configuration du shell avec :
+
+```bash
+source ~/.bashrc
+```
+
+## Installation du serveur MCP
+
+1. **Cloner le dépôt** (si ce n'est pas déjà fait) :
+```bash
+git clone git@github.com:DavidScanu/mcp-insee-entreprises.git
+cd mcp-insee-entreprises
+```
+
+2. **Installer les dépendances avec uv** :
+```bash
 uv sync
 ```
 
-## Configuration
+3. **Ajouter le serveur MCP à Claude Code** (scope user) :
 
-### Ajout au fichier de configuration Claude Desktop
+```bash
+claude mcp add --transport stdio insee-entreprises --scope user -- uv --directory <chemin/absolu/vers/mcp-insee-entreprises> run insee-entreprises
+```
 
-Ajoutez ceci à votre configuration MCP (`~/Library/Application Support/Claude/claude_desktop_config.json` sur macOS ou `%APPDATA%\Claude\claude_desktop_config.json` sur Windows) :
+> **Note** : Remplacez `<chemin/absolu/vers/mcp-insee-entreprises>` par le chemin absolu vers votre installation du serveur.
+
+**Alternative si `uv` n'est pas dans votre PATH** :
+
+Si la commande `uv` n'est pas reconnue, utilisez le chemin complet vers `uv` (généralement `~/.local/bin/uv` ou `~/.cargo/bin/uv`) :
+
+```bash
+claude mcp add --transport stdio insee-entreprises --scope user -- ~/.local/bin/uv --directory <chemin/absolu/vers/mcp-insee-entreprises> run insee-entreprises
+```
+
+Pour trouver le chemin complet vers `uv`, utilisez :
+```bash
+which uv
+```
+
+4. **Vérifier l'installation** :
+```bash
+claude mcp list
+```
+
+### Installation manuelle (alternative)
+
+Si vous préférez configurer manuellement, ajoutez ceci à votre fichier `~/.claude.json` :
 
 ```json
 {
@@ -55,13 +115,60 @@ Ajoutez ceci à votre configuration MCP (`~/Library/Application Support/Claude/c
       "command": "uv",
       "args": [
         "--directory",
-        "/home/user/mcp-servers/insee-entreprises",
+        "/home/david/mcp-servers/mcp-insee-entreprises",
         "run",
         "insee-entreprises"
       ]
     }
   }
 }
+```
+
+**Si `uv` n'est pas dans votre PATH**, utilisez le chemin absolu vers `uv` :
+
+```json
+{
+  "mcpServers": {
+    "insee-entreprises": {
+      "command": "/home/david/.local/bin/uv",
+      "args": [
+        "--directory",
+        "/home/david/mcp-servers/mcp-insee-entreprises",
+        "run",
+        "insee-entreprises"
+      ]
+    }
+  }
+}
+```
+
+> **Note** : Utilisez `which uv` pour trouver le chemin exact vers `uv` sur votre système.
+
+> **Note** : Pour Claude Desktop, utilisez plutôt le fichier de configuration Claude Desktop (`~/Library/Application Support/Claude/claude_desktop_config.json` sur macOS ou `%APPDATA%\Claude\claude_desktop_config.json` sur Windows).
+
+## Configuration
+
+### Scope d'installation
+
+Ce serveur est installé en **scope user**, ce qui signifie qu'il est :
+- Disponible pour tous vos projets Claude Code
+- Stocké dans `~/.claude.json`
+- Privé à votre compte utilisateur
+
+### Gestion du serveur
+
+```bash
+# Lister tous les serveurs MCP configurés
+claude mcp list
+
+# Obtenir les détails du serveur
+claude mcp get insee-entreprises
+
+# Supprimer le serveur
+claude mcp remove insee-entreprises
+
+# Vérifier le statut (dans Claude Code)
+/mcp
 ```
 
 ## Utilisation
@@ -114,19 +221,20 @@ Ce serveur utilise l'**API Recherche d'Entreprises** maintenue par l'INSEE :
 - Disponibilité : 100%
 - Accès : Ouvert (pas d'authentification requise)
 
-## Limites
+### Documentation de l'API
+
+- API Recherche d’Entreprises : https://www.data.gouv.fr/dataservices/api-recherche-dentreprises
+- Documentation API : https://recherche-entreprises.api.gouv.fr/docs/
+
+### Limites
 
 - L'API ne peut pas accéder aux :
   - Prédécesseurs/successeurs d'établissements
   - Entreprises non diffusibles
   - Rejets d'inscriptions RCS
 
-## Support
+## Développeur
 
-Pour toute question ou problème :
-- Documentation API : https://recherche-entreprises.api.gouv.fr/docs/
-- Contact : Via https://annuaire-entreprises.data.gouv.fr/faq/parcours?question=contact
-
-## Licence
-
-MIT
+Serveur MCP développé par **David Scanu**
+- https://github.com/DavidScanu
+- https://www.linkedin.com/in/davidscanu14/
