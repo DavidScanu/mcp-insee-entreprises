@@ -312,6 +312,29 @@ Utilisée pour les recherches **SIREN** et **SIRET** - Données officielles et c
 - Documentation complète: https://portail-api.insee.fr/catalog/api/2ba0e549-5587-3ef1-9082-99cd865de66f/doc
 - Spécifications OpenAPI: https://api-apimanager.insee.fr/portal/environments/DEFAULT/apis/2ba0e549-5587-3ef1-9082-99cd865de66f/pages/6548510e-c3e1-3099-be96-6edf02870699/content
 
+#### Exemple de requête curl
+
+Recherche par SIRET :
+
+```bash
+curl -X GET "https://api.insee.fr/api-sirene/3.11/siret/67205008502051" \
+  -H "X-INSEE-Api-Key-Integration: VOTRE_CLE_API_INSEE"
+```
+
+Avec récupération automatique de la clé depuis le fichier `.env` :
+
+```bash
+source .env && curl -X GET "https://api.insee.fr/api-sirene/3.11/siret/67205008502051" \
+  -H "X-INSEE-Api-Key-Integration: $INSEE_API_KEY"
+```
+
+Avec formatage JSON via `jq` :
+
+```bash
+source .env && curl -X GET "https://api.insee.fr/api-sirene/3.11/siret/67205008502051" \
+  -H "X-INSEE-Api-Key-Integration: $INSEE_API_KEY" | jq '.'
+```
+
 ### 2. API Recherche d'Entreprises
 
 Utilisée pour la recherche **avancée** avec filtres multiples:
