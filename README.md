@@ -22,9 +22,9 @@ Serveur MCP (Model Context Protocol) pour interroger l'**API SIRENE** de l'INSEE
    - Retourne les informations complètes et officielles de l'établissement
    - Données: adresse complète, activité (NAF), type d'établissement (siège/secondaire), effectifs, état administratif
 
-3. **advanced_search** - Recherche avancée avec filtres multiples
+3. **search_entreprises** - Recherche avancée avec filtres multiples
    - Nom d'entreprise, adresse, dirigeant
-   - Code postal
+   - Filtres géographiques: code postal, commune, département, région
    - Code NAF/APE
    - Section d'activité (A-U) avec conversion automatique nom → code
    - Nombre d'employés (min/max)
@@ -195,6 +195,70 @@ Ce serveur est installé en **scope user**, ce qui signifie qu'il est :
 - Stocké dans `~/.claude.json`
 - Privé à votre compte utilisateur
 
+### Autoriser automatiquement les appels de fonctions (User scope)
+
+Pour éviter de cliquer sur "Oui" à chaque recherche avec le serveur MCP, vous pouvez autoriser automatiquement tous les outils du serveur INSEE en ajoutant des permissions au niveau **user** (tous vos projets).
+
+#### Étape 1 : Vérifier que le serveur MCP est configuré
+
+Assurez-vous que le serveur `insee-entreprises` est bien défini dans `~/.claude.json` :
+
+```bash
+claude mcp list
+```
+
+Vous devriez voir `insee-entreprises` dans la liste.
+
+#### Étape 2 : Créer ou modifier le fichier de paramètres globaux
+
+Créez ou modifiez le fichier `~/.claude/settings.json` :
+
+```json
+{
+  "enableAllProjectMcpServers": true,
+  "permissions": {
+    "allow": [
+      "mcp__insee-entreprises__*"
+    ]
+  }
+}
+```
+
+**Explication des paramètres :**
+
+- `"enableAllProjectMcpServers": true` : Active automatiquement tous les serveurs MCP définis dans les fichiers `.mcp.json` de vos projets
+- `"permissions.allow"` : Liste les outils autorisés automatiquement
+- `"mcp__insee-entreprises__*"` : Autorise tous les outils du serveur MCP `insee-entreprises` (le `*` est un wildcard)
+
+#### Étape 3 : Redémarrer Claude Code
+
+Fermez et relancez Claude Code pour que les changements prennent effet.
+
+#### Vérification
+
+Une fois configuré, vous pouvez utiliser les outils MCP sans aucune demande d'autorisation :
+
+```
+Recherche les entreprises nommées "Carrefour"
+```
+
+Claude utilisera directement le serveur MCP sans demander de confirmation.
+
+#### Alternative : Autoriser des outils spécifiques uniquement
+
+Si vous préférez autoriser uniquement certains outils (par exemple, seulement la recherche par SIREN), remplacez le wildcard `*` par les noms des outils :
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "mcp__insee-entreprises__search_by_siren",
+      "mcp__insee-entreprises__search_by_siret"
+    ]
+  }
+}
+```
+
 ### Gestion du serveur
 
 ```bash
@@ -281,6 +345,79 @@ Le serveur supporte la recherche par section d'activité (niveau 1 de la nomencl
 | T | Activités des ménages en tant qu'employeurs |
 | U | Activités extra-territoriales |
 
+## Filtrage géographique
+
+Le serveur supporte plusieurs niveaux de filtrage géographique :
+
+### Codes postaux
+```
+Recherche les entreprises dans le code postal 75001
+```
+
+### Communes (Code INSEE)
+```
+Trouve les entreprises à Lyon (code commune 69123)
+```
+
+### Départements
+```
+Liste les entreprises en Isère (département 38)
+```
+
+### Régions
+```
+Recherche les entreprises en Auvergne-Rhône-Alpes (région 84)
+```
+
+### Filtres combinés
+```
+Trouve les entreprises de construction dans le département 38 avec plus de 100 employés
+```
+
+### Codes géographiques INSEE
+
+Les codes géographiques suivent la nomenclature officielle de l'INSEE (COG 2025) :
+
+| Type | Format | Exemple | Description |
+|------|--------|---------|-------------|
+| Code postal | 5 chiffres | 75001 | Code postal standard |
+| Code commune | 5 caractères | 69123 | Code INSEE de la commune |
+| Département | 2-3 chiffres | 38, 974 | Numéro de département (2 chiffres métropole, 3 chiffres outre-mer) |
+| Région | 2 chiffres | 84 | Code région |
+
+**Note :** Tous les paramètres géographiques acceptent des listes de valeurs séparées par des virgules pour effectuer des recherches sur plusieurs zones (ex: `departement=38,69` pour Isère et Rhône).
+
+### Recherche par nom géographique
+
+Le serveur MCP intègre un service de mapping qui permet de rechercher par nom géographique au lieu de codes :
+
+**Régions :**
+```
+Recherche les entreprises en Auvergne-Rhône-Alpes
+```
+Le serveur convertira automatiquement "Auvergne-Rhône-Alpes" en code région "84".
+
+**Départements :**
+```
+Trouve les entreprises dans le département de l'Isère
+```
+Le serveur convertira automatiquement "Isère" en code département "38".
+
+**Communes :**
+```
+Liste les entreprises à Grenoble
+```
+Le serveur convertira automatiquement "Grenoble" en code commune "38185".
+
+**Note importante pour les communes :** Plusieurs communes peuvent avoir le même nom. Dans ce cas, spécifiez également le département pour désambiguïser :
+```
+Trouve les entreprises à Saint-Martin dans le département 38
+```
+
+**Sources des codes géographiques :**
+- [COG 2025 (Code Officiel Géographique)](https://www.insee.fr/fr/information/8377162)
+- Données intégrées : régions, départements, communes (mise à jour janvier 2025)
+
 ## Informations retournées
 
 Pour chaque entreprise, le serveur retourne :
@@ -335,6 +472,30 @@ source .env && curl -X GET "https://api.insee.fr/api-sirene/3.11/siret/672050085
   -H "X-INSEE-Api-Key-Integration: $INSEE_API_KEY" | jq '.'
 ```
 
+#### Exemples de requêtes avec filtres géographiques
+
+Recherche d'entreprises avec filtres géographiques (API Recherche Entreprises) :
+
+```bash
+# Recherche par code postal
+curl -X GET "https://recherche-entreprises.api.gouv.fr/search?code_postal=38000&per_page=5"
+
+# Recherche par département
+curl -X GET "https://recherche-entreprises.api.gouv.fr/search?departement=38&per_page=5"
+
+# Recherche par région
+curl -X GET "https://recherche-entreprises.api.gouv.fr/search?region=84&per_page=5"
+
+# Recherche combinée: département + section d'activité
+curl -X GET "https://recherche-entreprises.api.gouv.fr/search?departement=38&section_activite_principale=F&per_page=10"
+
+# Recherche avec plusieurs départements
+curl -X GET "https://recherche-entreprises.api.gouv.fr/search?departement=38,69&per_page=10"
+
+# Recherche avec code commune
+curl -X GET "https://recherche-entreprises.api.gouv.fr/search?code_commune=38185&per_page=5"
+```
+
 ### 2. API Recherche d'Entreprises
 
 Utilisée pour la recherche **avancée** avec filtres multiples:
@@ -374,10 +535,13 @@ chmod +x scripts/insee_api.sh
 
 ## TODO
 
-- Tester le serveur MCP la recherche par SIREN et SIRET (API officielle INSEE Sirene 3.11)
+- ✅ Ajouter la recherche par critères géographiques (région, département, commune, code postal)
+- ✅ Renommer `advanced_search` en `search_entreprises`
+- ✅ Service de mapping géographique (nom → code) pour régions, départements et communes
+- ✅ Tester le serveur MCP la recherche par SIREN et SIRET (API officielle INSEE Sirene 3.11)
 - Tester le serveur MCP avec la nouvelle version de l'API INSEE Sirene (v4.0)
 - Ajouter des exemples d'utilisation avancée dans la documentation
-- Ajouter la recherche par critères géographiques (région, département)
+- Mettre à jour annuellement les données COG (Code Officiel Géographique)
 
 ---
 

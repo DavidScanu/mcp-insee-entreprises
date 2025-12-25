@@ -5,7 +5,7 @@ MCP Server for INSEE SIRENE API.
 Provides tools to search French enterprises using:
 - SIREN (enterprise identifier) via official INSEE API
 - SIRET (establishment identifier) via official INSEE API
-- Advanced search with multiple filters via Recherche Entreprises API
+- Advanced search with geographic and activity filters via Recherche Entreprises API
 """
 
 import asyncio
@@ -21,6 +21,13 @@ from mcp.server import Server
 from mcp.types import Tool, TextContent
 
 from .section_mapping import get_section_code, list_all_sections
+from .geo_mapping import (
+    get_region_code,
+    get_departement_code,
+    get_commune_code,
+    list_all_regions,
+    list_all_departements
+)
 
 # Load environment variables
 env_path = Path(__file__).parent.parent.parent / ".env"
@@ -75,8 +82,8 @@ async def list_tools() -> list[Tool]:
             }
         ),
         Tool(
-            name="advanced_search",
-            description="Advanced search with multiple filters including activity sector/section, company name, location, and employee count. Use this for: searching by industry/sector (Construction, Agriculture, etc.), company name, director name, address, filtering by location (postal code), employee count, or combining multiple criteria. Supports French activity section names (e.g., 'Construction', 'Information et communication') or codes (A-U).",
+            name="search_entreprises",
+            description="Advanced enterprise search with multiple filters including geographic criteria, activity sector/section, company name, and employee count. Use this for: searching by location (postal code, commune, department, region), industry/sector (Construction, Agriculture, etc.), company name, director name, address, employee count, or combining multiple criteria. Supports French activity section names (e.g., 'Construction', 'Information et communication') or codes (A-U).",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -84,9 +91,21 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "description": "Search term for company name, address, or director name (optional)"
                     },
-                    "postal_code": {
+                    "code_postal": {
                         "type": "string",
-                        "description": "Filter by postal code"
+                        "description": "Filter by postal code(s). Accepts comma-separated list (e.g., '75001,69002')"
+                    },
+                    "code_commune": {
+                        "type": "string",
+                        "description": "Filter by INSEE commune code(s). 5-character codes, comma-separated (e.g., '75056,69123')"
+                    },
+                    "departement": {
+                        "type": "string",
+                        "description": "Filter by department code(s). 2-3 digit codes, comma-separated (e.g., '75,69,974')"
+                    },
+                    "region": {
+                        "type": "string",
+                        "description": "Filter by region code(s). 2-digit codes, comma-separated (e.g., '11,84')"
                     },
                     "naf_code": {
                         "type": "string",
@@ -131,8 +150,8 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
             return await search_by_siren(arguments["siren"])
         elif name == "search_by_siret":
             return await search_by_siret(arguments["siret"])
-        elif name == "advanced_search":
-            return await advanced_search(arguments)
+        elif name == "search_entreprises":
+            return await search_entreprises(arguments)
         else:
             return [TextContent(type="text", text=f"Unknown tool: {name}")]
     except Exception as e:
@@ -188,16 +207,58 @@ async def search_by_siret(siret: str) -> list[TextContent]:
         return [TextContent(type="text", text=result)]
 
 
-async def advanced_search(params: dict[str, Any]) -> list[TextContent]:
-    """Perform advanced search with multiple filters."""
-    query_parts = []
+async def search_entreprises(params: dict[str, Any]) -> list[TextContent]:
+    """Perform advanced enterprise search with geographic and activity filters."""
 
-    if params.get("query"):
-        query_parts.append(f"q={quote(params['query'])}")
-    if params.get("postal_code"):
-        query_parts.append(f"code_postal={params['postal_code']}")
-    if params.get("naf_code"):
-        query_parts.append(f"activite_principale={quote(params['naf_code'])}")
+    # Handle region parameter - convert name to code if needed
+    if params.get("region"):
+        region_input = params["region"].strip()
+        # Check if already numeric code(s)
+        if not region_input.replace(",", "").replace(" ", "").isdigit():
+            # Try to convert name to code
+            region_code = get_region_code(region_input)
+            if not region_code:
+                available_regions = list_all_regions()
+                regions_list = "\n".join([f"  - {code}: {name}" for code, name in available_regions.items()])
+                return [TextContent(
+                    type="text",
+                    text=f"Région invalide: '{region_input}'\n\nRégions disponibles:\n{regions_list}"
+                )]
+            params["region"] = region_code
+
+    # Handle departement parameter - convert name to code if needed
+    if params.get("departement"):
+        dept_input = params["departement"].strip()
+        # Check if already numeric/alphanumeric code(s) (2A, 2B for Corsica)
+        is_code = all(part.strip().isdigit() or part.strip() in ["2A", "2B"]
+                      for part in dept_input.split(","))
+        if not is_code:
+            # Try to convert name to code
+            dept_code = get_departement_code(dept_input)
+            if not dept_code:
+                available_depts = list_all_departements()
+                depts_list = "\n".join([f"  - {code}: {name}" for code, name in available_depts.items()])
+                return [TextContent(
+                    type="text",
+                    text=f"Département invalide: '{dept_input}'\n\nDépartements disponibles:\n{depts_list}"
+                )]
+            params["departement"] = dept_code
+
+    # Handle commune parameter - convert name to code if needed
+    if params.get("code_commune"):
+        commune_input = params["code_commune"].strip()
+        # Check if already numeric code(s)
+        if not commune_input.replace(",", "").replace(" ", "").isdigit():
+            # Try to convert name to code
+            # For communes, we might need département to disambiguate
+            dept_for_commune = params.get("departement")
+            commune_code = get_commune_code(commune_input, dept_for_commune)
+            if not commune_code:
+                error_msg = f"Commune invalide: '{commune_input}'"
+                if not dept_for_commune:
+                    error_msg += "\n\nNote: Plusieurs communes peuvent avoir le même nom. Spécifiez le département pour désambiguïser."
+                return [TextContent(type="text", text=error_msg)]
+            params["code_commune"] = commune_code
 
     # Handle section_activite_principale - convert label to code if needed
     if params.get("section_activite_principale"):
@@ -217,8 +278,25 @@ async def advanced_search(params: dict[str, Any]) -> list[TextContent]:
                     text=f"Invalid section: '{section_input}'\n\nAvailable sections:\n{sections_list}"
                 )]
 
-        query_parts.append(f"section_activite_principale={section_code}")
+        params["section_activite_principale"] = section_code
 
+    # Build query parts after all conversions
+    query_parts = []
+
+    if params.get("query"):
+        query_parts.append(f"q={quote(params['query'])}")
+    if params.get("code_postal"):
+        query_parts.append(f"code_postal={params['code_postal']}")
+    if params.get("code_commune"):
+        query_parts.append(f"code_commune={params['code_commune']}")
+    if params.get("departement"):
+        query_parts.append(f"departement={params['departement']}")
+    if params.get("region"):
+        query_parts.append(f"region={params['region']}")
+    if params.get("naf_code"):
+        query_parts.append(f"activite_principale={quote(params['naf_code'])}")
+    if params.get("section_activite_principale"):
+        query_parts.append(f"section_activite_principale={params['section_activite_principale']}")
     if params.get("min_employees"):
         query_parts.append(f"tranche_effectif_salarie_min={params['min_employees']}")
     if params.get("max_employees"):
