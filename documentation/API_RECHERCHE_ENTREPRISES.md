@@ -152,6 +152,20 @@ Retourne les unités légales et établissements autour de coordonnées géograp
 }
 ```
 
+### Note importante sur le filtrage géographique
+
+Lorsque vous utilisez des filtres géographiques (département, région, code postal, commune), l'API recherche les **établissements** correspondants, mais retourne les **unités légales** (entreprises).
+
+**Comportement clé :**
+- Le filtre `departement=14` trouve toutes les entreprises ayant au moins un établissement dans le Calvados (14)
+- Le champ `siege` contient toujours l'adresse du siège social (qui peut être dans un autre département)
+- Le champ `matching_etablissements` contient la liste des établissements correspondant aux critères de recherche
+
+**Exemple :** Une recherche `departement=14` peut retourner :
+- Une entreprise avec siège à Paris (75)
+- Mais ayant plusieurs établissements dans le Calvados (14)
+- Les établissements du Calvados seront listés dans `matching_etablissements`
+
 ### Unité Légale
 
 | Propriété | Type | Description | Exemple |

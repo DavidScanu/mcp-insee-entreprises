@@ -506,18 +506,38 @@ def format_search_results(data: dict[str, Any], query: str) -> str:
     for i, enterprise in enumerate(results, 1):
         lines.append(f"\n[{i}] {enterprise.get('nom_complet', 'N/A')}")
         lines.append(f"    SIREN: {enterprise.get('siren', 'N/A')}")
-        lines.append(f"    SIRET: {enterprise.get('siret', 'N/A')}")
-        
+
         if enterprise.get("activite_principale"):
-            lines.append(f"    Activity: {enterprise.get('libelle_activite_principale', enterprise['activite_principale'])}")
-        
+            lines.append(f"    Activité: {enterprise.get('libelle_activite_principale', enterprise['activite_principale'])}")
+
+        # Afficher le siège social
         siege = enterprise.get("siege", {})
-        if siege.get("code_postal") and siege.get("libelle_commune"):
-            lines.append(f"    Location: {siege['code_postal']} {siege['libelle_commune']}")
-        
+        if siege:
+            lines.append(f"    Siège social:")
+            if siege.get("adresse"):
+                lines.append(f"      Adresse: {siege['adresse']}")
+            if siege.get("siret"):
+                lines.append(f"      SIRET: {siege['siret']}")
+
+        # Afficher les établissements correspondants
+        matching = enterprise.get("matching_etablissements", [])
+        if matching:
+            # Ne pas afficher les établissements si le seul établissement est le siège
+            non_siege_matching = [e for e in matching if not e.get("est_siege")]
+            if non_siege_matching or len(matching) > 1:
+                lines.append(f"    Établissements correspondants ({len(matching)}):")
+                for j, etab in enumerate(matching[:10], 1):  # Afficher max 10 établissements
+                    if etab.get("est_siege"):
+                        lines.append(f"      [{j}] {etab.get('adresse', 'N/A')} (siège)")
+                    else:
+                        lines.append(f"      [{j}] {etab.get('adresse', 'N/A')}")
+                    lines.append(f"          SIRET: {etab.get('siret', 'N/A')}")
+                if len(matching) > 10:
+                    lines.append(f"      ... et {len(matching) - 10} autres établissements")
+
         if enterprise.get("etat_administratif"):
-            status = "Active" if enterprise["etat_administratif"] == "A" else "Inactive"
-            lines.append(f"    Status: {status}")
+            status = "Actif" if enterprise["etat_administratif"] == "A" else "Inactif"
+            lines.append(f"    Statut: {status}")
     
     lines.append("\n" + "=" * 80)
     

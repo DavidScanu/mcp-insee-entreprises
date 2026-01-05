@@ -422,12 +422,27 @@ Trouve les entreprises à Saint-Martin dans le département 38
 
 Pour chaque entreprise, le serveur retourne :
 
-- **Identification** : SIREN, SIRET, dénomination sociale
-- **Activité** : Code NAF/APE et libellé
-- **Adresse** : Adresse complète du siège social
-- **Statut** : Actif/Inactif
+- **Identification** : SIREN, dénomination sociale
+- **Activité** : Code NAF/APE et libellé en français
+- **Siège social** :
+  - Adresse complète (numéro, type de voie, nom de voie, code postal, commune)
+  - SIRET du siège
+- **Établissements correspondants** :
+  - Jusqu'à 10 établissements avec leurs adresses complètes
+  - SIRET de chaque établissement
+  - Indication "(siège)" pour le siège social
+  - Nombre total d'établissements trouvés
+- **Statut** : Actif/Inactif (en français)
 - **Effectifs** : Tranche d'effectif salarié
 - **Dirigeants** : Liste des dirigeants et leur fonction
+
+### Format d'affichage optimisé
+
+Les résultats de recherche avancée (`search_entreprises`) affichent maintenant :
+- Le **siège social** avec son adresse complète et son SIRET
+- Les **établissements correspondants** avec leurs adresses complètes et SIRET
+- Une distinction claire entre le siège et les autres établissements
+- Terminologie en français pour une meilleure lisibilité
 
 ## API Utilisées
 
